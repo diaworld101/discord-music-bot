@@ -253,4 +253,6 @@ async def 검색(ctx, *, query):
     await ctx.send(embed=embed, view=SearchView(ctx, results))
 
 # ================= 실행 =================
-bot.run(os.getenv("MTQ5Mjg5NDY1ODM1MzY5Mjk0Ng.GVVvSP.uolDNsyePZYqmwgGvOREkUpKQavB_RALPHl90c"))
+import os
+
+bot.run(os.getenv("MTQ5Mjg5NDY1ODM1MzY5Mjk0Ng.GIK2IW.rwc-pj473YcAQqaGREOnXopR3Gd3H_aE601vm4"))
