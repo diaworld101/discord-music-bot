@@ -64,10 +64,12 @@ class YTDLSource(discord.PCMVolumeTransformer):
             data = data['entries'][0]
 
         return cls(
-            discord.FFmpegPCMAudio(data['url'], executable="ffmpeg", **ffmpeg_options),
-            data=data
-        )
-
+           discord.FFmpegPCMAudio(
+    data['url'],
+    before_options='-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
+    options='-vn'
+)
+            
 # ================= UI =================
 async def update_player(ctx, player):
     gid = ctx.guild.id
