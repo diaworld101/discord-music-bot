@@ -255,4 +255,4 @@ async def 검색(ctx, *, query):
 # ================= 실행 =================
 import os
 
-bot.run(os.getenv("MTQ5Mjg5NDY1ODM1MzY5Mjk0Ng.GIK2IW.rwc-pj473YcAQqaGREOnXopR3Gd3H_aE601vm4"))
+bot.run(os.getenv("DISCORD_TOKEN"))
