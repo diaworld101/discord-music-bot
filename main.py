@@ -3,11 +3,10 @@ from discord.ext import commands, tasks
 import yt_dlp
 import asyncio
 import os
-import random
 
 intents = discord.Intents.default()
 intents.message_content = True
-bot = commands.Bot(command_prefix="!", intents=intents)
+bot = commands.Bot(command_prefix="!!", intents=intents)
 
 # 🔥 yt-dlp 설정 (차단 대응)
 ytdl_opts = {
@@ -36,6 +35,23 @@ current = None
 start_time = 0
 
 
+# 🔊 음성 연결 안정 함수 (핵심)
+async def ensure_voice(ctx):
+    if not ctx.author.voice:
+        await ctx.send("❌ 음성 채널에 먼저 들어가세요")
+        return None
+
+    channel = ctx.author.voice.channel
+    vc = ctx.voice_client
+
+    if vc is None:
+        vc = await channel.connect()
+    elif vc.channel != channel:
+        await vc.move_to(channel)
+
+    return vc
+
+
 # 🎵 소스 생성
 async def create_source(url):
     loop = asyncio.get_event_loop()
@@ -47,13 +63,16 @@ async def create_source(url):
     if 'entries' in data:
         data = data['entries'][0]
 
-    return {
-        'audio': discord.FFmpegPCMAudio(data['url'], **ffmpeg_opts),
-        'title': data.get('title'),
-        'url': data.get('webpage_url'),
-        'thumbnail': data.get('thumbnail'),
-        'duration': data.get('duration', 0)
-    }
+    try:
+        return {
+            'audio': discord.FFmpegPCMAudio(data['url'], **ffmpeg_opts),
+            'title': data.get('title'),
+            'thumbnail': data.get('thumbnail'),
+            'duration': data.get('duration', 0),
+            'url': data.get('webpage_url')
+        }
+    except:
+        return None
 
 
 # 📊 프로그레스바
@@ -64,23 +83,13 @@ def progress_bar(elapsed, total, length=20):
     return "█" * filled + "─" * (length - filled)
 
 
-# 🔁 자동 다음곡 + 추천
+# 🔁 다음곡
 async def play_next(ctx):
     global current, start_time
 
-    if not queue:
-        # 🎵 자동 추천
-        if current:
-            search = current['title']
-            try:
-                data = ytdl.extract_info(f"ytsearch1:{search}", download=False)
-                queue.append(data['entries'][0]['webpage_url'])
-                await ctx.send("🔄 자동 추천 곡 추가됨")
-            except:
-                await ctx.send("📭 재생 종료")
-                return
-
     vc = ctx.voice_client
+    if not vc:
+        return
 
     while queue:
         url = queue.pop(0)
@@ -97,15 +106,14 @@ async def play_next(ctx):
             asyncio.run_coroutine_threadsafe(play_next(ctx), bot.loop)
 
         vc.play(source['audio'], after=after_playing)
-
         await send_now_playing(ctx)
         return
+
+    await ctx.send("📭 큐 종료")
 
 
 # 🎵 현재곡 UI
 async def send_now_playing(ctx):
-    global current
-
     embed = discord.Embed(
         title="🎵 재생 중",
         description=current['title']
@@ -143,36 +151,35 @@ async def update_progress(message):
         update_progress.stop()
 
 
-# 🔍 검색 (Spotify 스타일 느낌)
+# 🔍 검색
 @bot.command(name="검색")
 async def search(ctx, *, query):
     await ctx.send("🔍 검색 중...")
 
     try:
-        data = ytdl.extract_info(f"ytsearch5:{query}", download=False)
+        data = await asyncio.get_event_loop().run_in_executor(
+            None, lambda: ytdl.extract_info(f"ytsearch5:{query}", download=False)
+        )
     except:
-        await ctx.send("❌ 검색 제한됨 → URL 사용")
+        await ctx.send("❌ 검색 제한됨 → !!재생 URL 사용")
         return
 
     results = data.get('entries', [])
-    embed = discord.Embed(title="🎧 검색 결과 (Spotify 스타일)")
+
+    embed = discord.Embed(title="🔎 검색 결과")
 
     for i, entry in enumerate(results):
-        embed.add_field(
-            name=f"{i+1}. {entry['title']}",
-            value="▶ 클릭해서 재생",
-            inline=False
-        )
+        embed.add_field(name=f"{i+1}.", value=entry['title'], inline=False)
 
     await ctx.send(embed=embed, view=SearchView(results, ctx))
 
 
-# 🔘 버튼
+# 🔘 검색 버튼
 class SearchView(discord.ui.View):
     def __init__(self, results, ctx):
         super().__init__(timeout=30)
-        self.ctx = ctx
         self.results = results
+        self.ctx = ctx
 
         for i in range(len(results)):
             self.add_item(SearchButton(i, results, ctx))
@@ -188,14 +195,14 @@ class SearchButton(discord.ui.Button):
     async def callback(self, interaction: discord.Interaction):
         await interaction.response.defer()
 
+        vc = await ensure_voice(self.ctx)
+        if not vc:
+            return
+
         url = self.results[self.index]['webpage_url']
         queue.append(url)
 
         await interaction.followup.send(f"✅ 추가됨: {self.results[self.index]['title']}")
-
-        vc = self.ctx.voice_client
-        if not vc:
-            vc = await self.ctx.author.voice.channel.connect()
 
         if not vc.is_playing():
             await play_next(self.ctx)
@@ -230,15 +237,26 @@ class PlayerView(discord.ui.View):
 # ▶ 재생
 @bot.command(name="재생")
 async def play(ctx, url: str):
+    vc = await ensure_voice(ctx)
+    if not vc:
+        return
+
     queue.append(url)
     await ctx.send("✅ 큐 추가됨")
 
-    vc = ctx.voice_client
-    if not vc:
-        vc = await ctx.author.voice.channel.connect()
-
     if not vc.is_playing():
         await play_next(ctx)
+
+
+# 📜 큐
+@bot.command(name="큐")
+async def show_queue(ctx):
+    if not queue:
+        await ctx.send("📭 큐 비어있음")
+        return
+
+    text = "\n".join([f"{i+1}. {q}" for i, q in enumerate(queue)])
+    await ctx.send(f"📜 큐 목록:\n{text}")
 
 
 @bot.event
