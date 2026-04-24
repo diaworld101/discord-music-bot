@@ -6,7 +6,7 @@ import os
 
 intents = discord.Intents.default()
 intents.message_content = True
-bot = commands.Bot(command_prefix="!", intents=intents)
+bot = commands.Bot(command_prefix="!!", intents=intents)
 
 # 🔥 yt-dlp 안정 설정 (차단 회피 포함)
 ytdl_format_options = {
